@@ -112,15 +112,15 @@ public class TestSmapsBasedProcessTree {
 
     if (!Shell.LINUX) {
       System.out
-          .println("ProcfsBasedProcessTree is not available on this system. Not testing");
+          .println("SmapsBasedProcessTree is not available on this system. Not testing");
       return;
 
     }
     try {
-      Assert.assertTrue(ProcfsBasedProcessTree.isAvailable());
+      Assert.assertTrue(SmapsBasedProcessTree.isAvailable());
     } catch (Exception e) {
       LOG.info(StringUtils.stringifyException(e));
-      Assert.assertTrue("ProcfsBaseProcessTree should be available on Linux",
+      Assert.assertTrue("SmapsBasedProcessTree should be available on Linux",
         false);
       return;
     }
@@ -167,7 +167,7 @@ public class TestSmapsBasedProcessTree {
     t.start();
     String pid = getRogueTaskPID();
     LOG.info("Root process pid: " + pid);
-    ProcfsBasedProcessTree p = createProcessTree(pid);
+    SmapsBasedProcessTree p = createProcessTree(pid);
     p.updateProcessTree(); // initialize
     LOG.info("ProcessTree: " + p.toString());
 
@@ -237,12 +237,12 @@ public class TestSmapsBasedProcessTree {
     Assert.assertTrue(p.toString().equals("[ ]"));
   }
 
-  protected ProcfsBasedProcessTree createProcessTree(String pid) {
-    return new ProcfsBasedProcessTree(pid);
+  protected SmapsBasedProcessTree createProcessTree(String pid) {
+    return new SmapsBasedProcessTree(pid);
   }
 
-  protected ProcfsBasedProcessTree createProcessTree(String pid, String procfsRootDir) {
-    return new ProcfsBasedProcessTree(pid, procfsRootDir);
+  protected SmapsBasedProcessTree createProcessTree(String pid, String procfsRootDir) {
+    return new SmapsBasedProcessTree(pid, procfsRootDir);
   }
 
   protected void destroyProcessTree(String pid) throws IOException {
@@ -292,6 +292,60 @@ public class TestSmapsBasedProcessTree {
       }
     }
     return pid;
+  }
+  
+  public static class SmapsInfo {
+    String pid;
+    String size;
+    String rss;
+    String pss;
+    String shared_clean;
+    String shared_dirty;
+    String private_clean;
+    String private_dirty;
+    String referenced;
+    String anonymous;
+    String anonHugePages;
+    String swap;
+    String kernelPageSize;
+    String mmuPageSize;
+    
+    public SmapsInfo(String pid, String[] entries) {
+      this.pid = pid;
+      size = entries[0];
+      rss = entries[1];
+      pss = entries[2];
+      shared_clean = entries[3];
+      shared_dirty = entries[4];
+      private_clean = entries[5];
+      private_dirty = entries[6];
+      referenced = entries[7];
+      anonymous = entries[8];
+      anonHugePages = entries[9];
+      swap = entries[10];
+      kernelPageSize = entries[11];
+      mmuPageSize = entries[12];
+    }
+    
+    public String toString() {
+      StringBuilder sb = new StringBuilder();
+      sb.append("7fffd3dff000-7fffd3e00000 r-xp 00000000 00:00 0\n");
+      sb.append("Size:                      ").append(size).append(" kB\n");
+      sb.append("Rss:                       ").append(rss).append(" kB\n");
+      sb.append("Pss:                       ").append(pss).append(" kB\n");
+      sb.append("Shared_Clean:              ").append(shared_clean).append(" kB\n");
+      sb.append("Shared_Dirty:              ").append(shared_dirty).append(" kB\n");
+      sb.append("Private_Clean:             ").append(private_clean).append(" kB\n");
+      sb.append("Private_Dirty:             ").append(private_dirty).append(" kB\n");
+      sb.append("Referenced:                ").append(referenced).append(" kB\n");
+      sb.append("Anonymous:                 ").append(anonymous).append(" kB\n");
+      sb.append("AnonHugePages:             ").append(anonHugePages).append(" kB\n");
+      sb.append("Swap:                      ").append(swap).append(" kB\n");
+      sb.append("KernelPageSize:            ").append(kernelPageSize).append(" kB\n");
+      sb.append("MMUPageSize:               ").append(mmuPageSize).append(" kB\n");
+      return sb.toString();
+    }
+    
   }
 
   public static class ProcessStatInfo {
@@ -367,11 +421,22 @@ public class TestSmapsBasedProcessTree {
           {"300", "proc3", "200", "100", "100", "300000", "300", "3000", "600"});
       procInfos[3] = new ProcessStatInfo(new String[]
           {"400", "proc4", "1", "400", "400", "400000", "400", "4000", "800"});
+      
+      SmapsInfo[] smapInfos = new SmapsInfo[4];
+      smapInfos[0] = new SmapsInfo("100", new String[]
+          {"4", "4", "25", "4", "0", "0", "0", "4", "0", "0", "0", "4", "4"});
+      smapInfos[1] = new SmapsInfo("200", new String[]
+          {"4", "4", "25", "4", "0", "0", "0", "4", "0", "0", "0", "4", "4"});
+      smapInfos[2] = new SmapsInfo("300", new String[]
+          {"4", "4", "25", "4", "0", "0", "0", "4", "0", "0", "0", "4", "4"});
+      smapInfos[3] = new SmapsInfo("400", new String[]
+          {"4", "4", "25", "4", "0", "0", "0", "4", "0", "0", "0", "4", "4"});
 
-      writeStatFiles(procfsRootDir, pids, procInfos);
+      writeStatFiles(procfsRootDir, pids, procInfos, smapInfos);
+      
 
       // crank up the process tree class.
-      ProcfsBasedProcessTree processTree =
+      SmapsBasedProcessTree processTree =
           createProcessTree("100", procfsRootDir.getAbsolutePath());
       // build the process tree.
       processTree.updateProcessTree();
@@ -381,10 +446,8 @@ public class TestSmapsBasedProcessTree {
                    processTree.getCumulativeVmem());
 
       // verify rss memory
-      long cumuRssMem = ProcfsBasedProcessTree.PAGE_SIZE > 0 ?
-                        600L * ProcfsBasedProcessTree.PAGE_SIZE : 0L;
       Assert.assertEquals("Cumulative rss memory does not match",
-                   cumuRssMem, processTree.getCumulativeRssmem());
+                   75*1024, processTree.getCumulativeRssmem());
 
       // verify cumulative cpu time
       long cumuCpuTime = ProcfsBasedProcessTree.JIFFY_LENGTH_IN_MILLIS > 0 ?
@@ -397,7 +460,13 @@ public class TestSmapsBasedProcessTree {
           {"100", "proc1", "1", "100", "100", "100000", "100", "2000", "300"});
       procInfos[1] = new ProcessStatInfo(new String[]
           {"200", "proc2", "100", "100", "100", "200000", "200", "3000", "500"});
-      writeStatFiles(procfsRootDir, pids, procInfos);
+      
+      smapInfos[0] = new SmapsInfo("100", new String[]
+          {"4", "4", "0", "4", "0", "0", "0", "4", "0", "0", "0", "4", "4"});
+      smapInfos[1] = new SmapsInfo("200", new String[]
+          {"4", "4", "0", "4", "0", "0", "0", "4", "0", "0", "0", "4", "4"});
+      
+      writeStatFiles(procfsRootDir, pids, procInfos, smapInfos);
 
       // build the process tree.
       processTree.updateProcessTree();
@@ -441,10 +510,21 @@ public class TestSmapsBasedProcessTree {
       procInfos[3] = new ProcessStatInfo(new String[]
                         {"400", "proc4", "100", "100", "100", "400000", "400"});
 
-      writeStatFiles(procfsRootDir, pids, procInfos);
+      
+      SmapsInfo[] smapInfos = new SmapsInfo[4];
+      smapInfos[0] = new SmapsInfo("100", new String[]
+          {"4", "4", "25", "4", "0", "0", "0", "4", "0", "0", "0", "4", "4"});
+      smapInfos[1] = new SmapsInfo("200", new String[]
+          {"4", "4", "25", "4", "0", "0", "0", "4", "0", "0", "0", "4", "4"});
+      smapInfos[2] = new SmapsInfo("300", new String[]
+          {"4", "4", "25", "4", "0", "0", "0", "4", "0", "0", "0", "4", "4"});
+      smapInfos[3] = new SmapsInfo("400", new String[]
+          {"4", "4", "25", "4", "0", "0", "0", "4", "0", "0", "0", "4", "4"});
+      
+      writeStatFiles(procfsRootDir, pids, procInfos, smapInfos);
 
       // crank up the process tree class.
-      ProcfsBasedProcessTree processTree =
+      SmapsBasedProcessTree processTree =
           createProcessTree("100", procfsRootDir.getAbsolutePath());
       // build the process tree.
       processTree.updateProcessTree();
@@ -460,24 +540,27 @@ public class TestSmapsBasedProcessTree {
       ProcessStatInfo[] newProcInfos = new ProcessStatInfo[1];
       newProcInfos[0] = new ProcessStatInfo(new String[]
                       {"500", "proc5", "100", "100", "100", "500000", "500"});
-      writeStatFiles(procfsRootDir, newPids, newProcInfos);
+      
+      smapInfos = new SmapsInfo[1];
+      smapInfos[0] = new SmapsInfo("500", new String[]
+          {"4", "4", "25", "4", "0", "0", "0", "4", "0", "0", "0", "4", "4"});
+      
+      writeStatFiles(procfsRootDir, newPids, newProcInfos, smapInfos);
 
       // check memory includes the new process.
       processTree.updateProcessTree();
+      
+      
       Assert.assertEquals("Cumulative vmem does not include new process",
                    1200000L, processTree.getCumulativeVmem());
-      long cumuRssMem = ProcfsBasedProcessTree.PAGE_SIZE > 0 ?
-                        1200L * ProcfsBasedProcessTree.PAGE_SIZE : 0L;
       Assert.assertEquals("Cumulative rssmem does not include new process",
-                   cumuRssMem, processTree.getCumulativeRssmem());
+                   100*1024, processTree.getCumulativeRssmem());
 
       // however processes older than 1 iteration will retain the older value
       Assert.assertEquals("Cumulative vmem shouldn't have included new process",
                    700000L, processTree.getCumulativeVmem(1));
-      cumuRssMem = ProcfsBasedProcessTree.PAGE_SIZE > 0 ?
-                   700L * ProcfsBasedProcessTree.PAGE_SIZE : 0L;
       Assert.assertEquals("Cumulative rssmem shouldn't have included new process",
-                   cumuRssMem, processTree.getCumulativeRssmem(1));
+                75*1024, processTree.getCumulativeRssmem(1));
 
       // one more process
       newPids = new String[]{ "600" };
@@ -486,27 +569,26 @@ public class TestSmapsBasedProcessTree {
       newProcInfos = new ProcessStatInfo[1];
       newProcInfos[0] = new ProcessStatInfo(new String[]
                       {"600", "proc6", "100", "100", "100", "600000", "600"});
-      writeStatFiles(procfsRootDir, newPids, newProcInfos);
+      smapInfos = new SmapsInfo[1];
+      smapInfos[0] = new SmapsInfo("600", new String[]
+          {"4", "4", "25", "4", "0", "0", "0", "4", "0", "0", "0", "4", "4"});
+      writeStatFiles(procfsRootDir, newPids, newProcInfos, smapInfos);
 
       // refresh process tree
       processTree.updateProcessTree();
-
+      
       // processes older than 2 iterations should be same as before.
       Assert.assertEquals("Cumulative vmem shouldn't have included new processes",
                    700000L, processTree.getCumulativeVmem(2));
-      cumuRssMem = ProcfsBasedProcessTree.PAGE_SIZE > 0 ?
-                   700L * ProcfsBasedProcessTree.PAGE_SIZE : 0L;
       Assert.assertEquals("Cumulative rssmem shouldn't have included new processes",
-                   cumuRssMem, processTree.getCumulativeRssmem(2));
+                75*1024, processTree.getCumulativeRssmem(2));
 
       // processes older than 1 iteration should not include new process,
       // but include process 500
       Assert.assertEquals("Cumulative vmem shouldn't have included new processes",
                    1200000L, processTree.getCumulativeVmem(1));
-      cumuRssMem = ProcfsBasedProcessTree.PAGE_SIZE > 0 ?
-                   1200L * ProcfsBasedProcessTree.PAGE_SIZE : 0L;
       Assert.assertEquals("Cumulative rssmem shouldn't have included new processes",
-                   cumuRssMem, processTree.getCumulativeRssmem(1));
+          100*1024, processTree.getCumulativeRssmem(1));
 
       // no processes older than 3 iterations, this should be 0
       Assert.assertEquals("Getting non-zero vmem for processes older than 3 iterations",
@@ -578,6 +660,22 @@ public class TestSmapsBasedProcessTree {
           "500", "proc5", "400", "100", "100", "400000", "400", "4000", "800"});
       procInfos[5] = new ProcessStatInfo(new String[] {
           "600", "proc6", "1", "1", "1", "400000", "400", "4000", "800"});
+      
+
+      SmapsInfo[] smapInfos = new SmapsInfo[numProcesses];
+      smapInfos[0] = new SmapsInfo("100", new String[]
+          {"4", "4", "0", "4", "0", "0", "0", "4", "0", "0", "0", "4", "4"});
+      smapInfos[1] = new SmapsInfo("200", new String[]
+          {"4", "4", "0", "4", "0", "0", "0", "4", "0", "0", "0", "4", "4"});
+      smapInfos[2] = new SmapsInfo("300", new String[]
+          {"4", "4", "0", "4", "0", "0", "0", "4", "0", "0", "0", "4", "4"});
+      smapInfos[3] = new SmapsInfo("400", new String[]
+          {"4", "4", "0", "4", "0", "0", "0", "4", "0", "0", "0", "4", "4"});
+      smapInfos[4] = new SmapsInfo("500", new String[]
+          {"4", "4", "0", "4", "0", "0", "0", "4", "0", "0", "0", "4", "4"});
+      smapInfos[5] = new SmapsInfo("600", new String[]
+          {"4", "4", "0", "4", "0", "0", "0", "4", "0", "0", "0", "4", "4"});
+      
 
       String[] cmdLines = new String[numProcesses];
       cmdLines[0] = "proc1 arg1 arg2";
@@ -587,10 +685,10 @@ public class TestSmapsBasedProcessTree {
       cmdLines[4] = "proc5 arg9 arg10";
       cmdLines[5] = "proc6 arg11 arg12";
 
-      writeStatFiles(procfsRootDir, pids, procInfos);
+      writeStatFiles(procfsRootDir, pids, procInfos, smapInfos);
       writeCmdLineFiles(procfsRootDir, pids, cmdLines);
 
-      ProcfsBasedProcessTree processTree = createProcessTree(
+      SmapsBasedProcessTree processTree = createProcessTree(
           "100", procfsRootDir.getAbsolutePath());
       // build the process tree.
       processTree.updateProcessTree();
@@ -674,7 +772,7 @@ public class TestSmapsBasedProcessTree {
    *           alive, false otherwise.
    */
   private static boolean isAnyProcessInTreeAlive(
-      ProcfsBasedProcessTree processTree) {
+      SmapsBasedProcessTree processTree) {
     for (String pId : processTree.getCurrentProcessIDs()) {
       if (isAlive(pId)) {
         return true;
@@ -726,10 +824,12 @@ public class TestSmapsBasedProcessTree {
    * @param pids the PID directories under which to create the stat file
    * @param procs corresponding ProcessStatInfo objects whose data should be
    *              written to the stat files.
+   * @param smap related information             
    * @throws IOException if stat files could not be written
    */
   public static void writeStatFiles(File procfsRootDir, String[] pids,
-                              ProcessStatInfo[] procs) throws IOException {
+                              ProcessStatInfo[] procs, 
+                              SmapsInfo[] smaps) throws IOException {
     for (int i=0; i<pids.length; i++) {
       File statFile =
           new File(new File(procfsRootDir, pids[i]),
@@ -747,6 +847,24 @@ public class TestSmapsBasedProcessTree {
           bw.close();
         }
       }
+      
+      File smapFile =
+          new File(new File(procfsRootDir, pids[i]),
+              SmapsBasedProcessTree.SMAPS);
+      bw = null;
+      try {
+        FileWriter fw = new FileWriter(smapFile);
+        bw = new BufferedWriter(fw);
+        bw.write(smaps[i].toString());
+        LOG.info("wrote smap file for " + pids[i] +
+                  " with contents: " + smaps[i].toString());
+      } finally {
+        // not handling exception - will throw an error and fail the test.
+        if (bw != null) {
+          bw.close();
+        }
+      }
+      
     }
   }
 

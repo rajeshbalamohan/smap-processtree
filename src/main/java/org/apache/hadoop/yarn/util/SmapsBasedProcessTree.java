@@ -62,7 +62,7 @@ public class SmapsBasedProcessTree extends ResourceCalculatorProcessTree {
   private static final String PRIVATE_DIRTY = "Private_Dirty";
   private static final String REFERENCED = "Referenced";
 
-  private static final String SMAPS = "smaps";
+  public static final String SMAPS = "smaps";
   private static final String KB = "kB";
 
 
