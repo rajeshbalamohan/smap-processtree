@@ -23,21 +23,14 @@ mvn eclipse:eclipse;
 
 mvn clean package;
 
-edit yarn-site.xml:
-==================
- <property>
-   <name>yarn.nodemanager.container-monitor.process-tree.class</name>
-   <!-- <value>org.apache.hadoop.yarn.util.ProcfsBasedProcessTree</value> -->
-   <value>org.apache.hadoop.yarn.util.SmapsBasedProcessTree</value>
- </property>
+Edit yarn-site.xml:
+------------------
+set yarn.nodemanager.container-monitor.process-tree.class=org.apache.hadoop.yarn.util.SmapsBasedProcessTree
 
-edit mapred-site.xml:
-====================
- <property>
-   <name>mapreduce.job.process-tree.class</name>
-   <value>org.apache.hadoop.yarn.util.SmapsBasedProcessTree</value>
- </property>
-
+Edit mapred-site.xml:
+--------------------
+set mapreduce.job.process-tree.class=org.apache.hadoop.yarn.util.SmapsBasedProcessTree
+ 
 Ensure to place the target/smap*.jar in the begining of the classpath 
 
 Refer https://issues.apache.org/jira/browse/YARN-1747 for more details
