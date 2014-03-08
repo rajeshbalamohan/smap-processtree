@@ -20,7 +20,6 @@ package org.apache.hadoop.yarn.util;
 
 import java.io.BufferedReader;
 import java.io.File;
-import java.io.FileInputStream;
 import java.io.FileNotFoundException;
 import java.io.FileReader;
 import java.io.IOException;
@@ -49,55 +48,75 @@ import org.apache.hadoop.util.StringUtils;
 @InterfaceStability.Unstable
 public class SmapsBasedProcessTree extends ResourceCalculatorProcessTree {
 
-  static final Log LOG = LogFactory
-      .getLog(SmapsBasedProcessTree.class);
+  static final Log LOG = LogFactory.getLog(SmapsBasedProcessTree.class);
 
   private static final String PROCFS = "/proc/";
-  
-  private static final String RSS = "Rss";
-  private static final String PSS = "Pss";
-  private static final String SHARED_CLEAN = "Shared_Clean";
-  private static final String SHARED_DIRTY = "Shared_Dirty";
-  private static final String PRIVATE_CLEAN = "Private_Clean";
-  private static final String PRIVATE_DIRTY = "Private_Dirty";
-  private static final String REFERENCED = "Referenced";
+
+  enum MEM_INFO {
+    SIZE("Size"), RSS("Rss"), PSS("Pss"), SHARED_CLEAN("Shared_Clean"), SHARED_DIRTY(
+        "Shared_Dirty"), PRIVATE_CLEAN("Private_Clean"), PRIVATE_DIRTY(
+        "Private_Dirty"), REFERENCED("Referenced"), ANONYMOUS("Anonymous"), ANON_HUGE_PAGES(
+        "AnonHugePages"), SWAP("swap"), KERNEL_PAGE_SIZE("kernelPageSize"), MMU_PAGE_SIZE(
+        "mmuPageSize"), INVALID("invalid");
+
+    private String name;
+
+    private MEM_INFO(String name) {
+      this.name = name;
+    }
+
+    public static MEM_INFO getMemInfoByName(String name) {
+      for (MEM_INFO info : MEM_INFO.values()) {
+        if (info.name.trim().equals(name.trim())) {
+          return info;
+        }
+      }
+      return INVALID;
+    }
+  }
 
   public static final String SMAPS = "smaps";
   private static final String KB = "kB";
 
+  private static final Pattern PROCFS_STAT_FILE_FORMAT = Pattern
+      .compile("^([0-9-]+)\\s([^\\s]+)\\s[^\\s]\\s([0-9-]+)\\s([0-9-]+)\\s([0-9-]+)\\s"
+          + "([0-9-]+\\s){7}([0-9]+)\\s([0-9]+)\\s([0-9-]+\\s){7}([0-9]+)\\s([0-9]+)"
+          + "(\\s[0-9-]+){15}");
 
-  private static final Pattern PROCFS_STAT_FILE_FORMAT = Pattern .compile(
-    "^([0-9-]+)\\s([^\\s]+)\\s[^\\s]\\s([0-9-]+)\\s([0-9-]+)\\s([0-9-]+)\\s" +
-    "([0-9-]+\\s){7}([0-9]+)\\s([0-9]+)\\s([0-9-]+\\s){7}([0-9]+)\\s([0-9]+)" +
-    "(\\s[0-9-]+){15}");
+  private static final Pattern ADDRESS_PATTERN = Pattern
+      .compile("([[a-f]|(0-9)]*)-([[a-f]|(0-9)]*)");
+  private static final Pattern MEM_INFO_PATTERN = Pattern
+      .compile("(^[A-Z].*):[\t ]+(.*)");
 
   public static final String PROCFS_STAT_FILE = "stat";
   public static final String PROCFS_CMDLINE_FILE = "cmdline";
   public static final long PAGE_SIZE;
   public static final long JIFFY_LENGTH_IN_MILLIS; // in millisecond
-  
+
   static {
     long jiffiesPerSecond = -1;
     long pageSize = -1;
     try {
-      if(Shell.LINUX) {
+      if (Shell.LINUX) {
         ShellCommandExecutor shellExecutorClk = new ShellCommandExecutor(
             new String[] { "getconf", "CLK_TCK" });
         shellExecutorClk.execute();
-        jiffiesPerSecond = Long.parseLong(shellExecutorClk.getOutput().replace("\n", ""));
+        jiffiesPerSecond = Long.parseLong(shellExecutorClk.getOutput().replace(
+            "\n", ""));
 
         ShellCommandExecutor shellExecutorPage = new ShellCommandExecutor(
             new String[] { "getconf", "PAGESIZE" });
         shellExecutorPage.execute();
-        pageSize = Long.parseLong(shellExecutorPage.getOutput().replace("\n", ""));
+        pageSize = Long.parseLong(shellExecutorPage.getOutput().replace("\n",
+            ""));
 
       }
     } catch (IOException e) {
       LOG.error(StringUtils.stringifyException(e));
     } finally {
-      JIFFY_LENGTH_IN_MILLIS = jiffiesPerSecond != -1 ?
-                     Math.round(1000D / jiffiesPerSecond) : -1;
-                     PAGE_SIZE = pageSize;
+      JIFFY_LENGTH_IN_MILLIS = jiffiesPerSecond != -1 ? Math
+          .round(1000D / jiffiesPerSecond) : -1;
+      PAGE_SIZE = pageSize;
     }
   }
 
@@ -110,11 +129,9 @@ public class SmapsBasedProcessTree extends ResourceCalculatorProcessTree {
   static private Pattern numberPattern = Pattern.compile("[1-9][0-9]*");
   private Long cpuTime = 0L;
 
-  protected Map<String, ProcessInfo> processTree =
-    new HashMap<String, ProcessInfo>();
-  
-  protected Map<String, ProcessMemInfo> processSMAPTree = 
-      new HashMap<String, ProcessMemInfo>();
+  protected Map<String, ProcessInfo> processTree = new HashMap<String, ProcessInfo>();
+
+  protected Map<String, ProcessMemInfo> processSMAPTree = new HashMap<String, ProcessMemInfo>();
 
   public SmapsBasedProcessTree(String pid) {
     this(pid, PROCFS);
@@ -122,12 +139,14 @@ public class SmapsBasedProcessTree extends ResourceCalculatorProcessTree {
 
   /**
    * Build a new process tree rooted at the pid.
-   *
-   * This method is provided mainly for testing purposes, where
-   * the root of the proc file system can be adjusted.
-   *
-   * @param pid root of the process tree
-   * @param procfsDir the root of a proc file system - only used for testing.
+   * 
+   * This method is provided mainly for testing purposes, where the root of the
+   * proc file system can be adjusted.
+   * 
+   * @param pid
+   *          root of the process tree
+   * @param procfsDir
+   *          the root of a proc file system - only used for testing.
    */
   public SmapsBasedProcessTree(String pid, String procfsDir) {
     super(pid);
@@ -137,7 +156,7 @@ public class SmapsBasedProcessTree extends ResourceCalculatorProcessTree {
 
   /**
    * Checks if the ProcfsBasedProcessTree is available on this system.
-   *
+   * 
    * @return true if ProcfsBasedProcessTree is available. False otherwise.
    */
   public static boolean isAvailable() {
@@ -157,7 +176,7 @@ public class SmapsBasedProcessTree extends ResourceCalculatorProcessTree {
   /**
    * Update process-tree with latest state. If the root-process is not alive,
    * tree will be empty.
-   *
+   * 
    */
   @Override
   public void updateProcessTree() {
@@ -168,8 +187,8 @@ public class SmapsBasedProcessTree extends ResourceCalculatorProcessTree {
       Map<String, ProcessInfo> allProcessInfo = new HashMap<String, ProcessInfo>();
 
       // cache the processTree to get the age for processes
-      Map<String, ProcessInfo> oldProcs =
-              new HashMap<String, ProcessInfo>(processTree);
+      Map<String, ProcessInfo> oldProcs = new HashMap<String, ProcessInfo>(
+          processTree);
       processTree.clear();
 
       ProcessInfo me = null;
@@ -228,7 +247,7 @@ public class SmapsBasedProcessTree extends ResourceCalculatorProcessTree {
         LOG.debug(this.toString());
       }
     }
-    
+
     // Update PSS related information
     for (ProcessInfo p : processTree.values()) {
       if (p != null) {
@@ -240,7 +259,9 @@ public class SmapsBasedProcessTree extends ResourceCalculatorProcessTree {
     }
   }
 
-  /** Verify that the given process id is same as its process group id.
+  /**
+   * Verify that the given process id is same as its process group id.
+   * 
    * @return true if the process id matches else return false.
    */
   @Override
@@ -254,13 +275,13 @@ public class SmapsBasedProcessTree extends ResourceCalculatorProcessTree {
     pInfo = constructProcessInfo(pInfo, procfs);
     // null if process group leader finished execution; issue no warning
     // make sure that pid and its pgrpId match
-    if (pInfo == null) return true;
+    if (pInfo == null)
+      return true;
     String pgrpId = pInfo.getPgrpId().toString();
     return pgrpId.equals(_pid);
   }
 
-  private static final String PROCESSTREE_DUMP_FORMAT =
-      "\t|- %s %s %d %d %s %d %d %d %d %s\n";
+  private static final String PROCESSTREE_DUMP_FORMAT = "\t|- %s %s %d %d %s %d %d %d %d %s\n";
 
   public List<String> getCurrentProcessIDs() {
     List<String> currentPIDs = new ArrayList<String>();
@@ -270,7 +291,7 @@ public class SmapsBasedProcessTree extends ResourceCalculatorProcessTree {
 
   /**
    * Get a dump of the process-tree.
-   *
+   * 
    * @return a string concatenating the dump of information of all the processes
    *         in the process-tree
    */
@@ -283,10 +304,10 @@ public class SmapsBasedProcessTree extends ResourceCalculatorProcessTree {
         + "RSSMEM_USAGE(PAGES) FULL_CMD_LINE\n"));
     for (ProcessInfo p : processTree.values()) {
       if (p != null) {
-        ret.append(String.format(PROCESSTREE_DUMP_FORMAT, p.getPid(), p
-            .getPpid(), p.getPgrpId(), p.getSessionId(), p.getName(), p
-            .getUtime(), p.getStime(), p.getVmem(), p.getRssmemPage(), p
-            .getCmdLine(procfsDir)));
+        ret.append(String.format(PROCESSTREE_DUMP_FORMAT, p.getPid(),
+            p.getPpid(), p.getPgrpId(), p.getSessionId(), p.getName(),
+            p.getUtime(), p.getStime(), p.getVmem(), p.getRssmemPage(),
+            p.getCmdLine(procfsDir)));
       }
     }
     return ret.toString();
@@ -295,11 +316,11 @@ public class SmapsBasedProcessTree extends ResourceCalculatorProcessTree {
   /**
    * Get the cumulative virtual memory used by all the processes in the
    * process-tree that are older than the passed in age.
-   *
-   * @param olderThanAge processes above this age are included in the
-   *                      memory addition
-   * @return cumulative virtual memory used by the process-tree in bytes,
-   *          for processes older than this age.
+   * 
+   * @param olderThanAge
+   *          processes above this age are included in the memory addition
+   * @return cumulative virtual memory used by the process-tree in bytes, for
+   *         processes older than this age.
    */
   @Override
   public long getCumulativeVmem(int olderThanAge) {
@@ -314,25 +335,28 @@ public class SmapsBasedProcessTree extends ResourceCalculatorProcessTree {
 
   /**
    * Get the cumulative resident set size (rss) memory used by all the processes
-   * in the process-tree that are older than the passed in age.
-   * RSS is calculated based on SMAP information.
-   * @param olderThanAge processes above this age are included in the
-   *                      memory addition
-   * @return cumulative rss memory used by the process-tree in bytes,
-   *          for processes older than this age. return 0 if it cannot be
-   *          calculated
+   * in the process-tree that are older than the passed in age. RSS is
+   * calculated based on SMAP information.
+   * 
+   * @param olderThanAge
+   *          processes above this age are included in the memory addition
+   * @return cumulative rss memory used by the process-tree in bytes, for
+   *         processes older than this age. return 0 if it cannot be calculated
    */
   @Override
   public long getCumulativeRssmem(int olderThanAge) {
     long total = 0;
     for (ProcessInfo p : processTree.values()) {
       if ((p != null) && (p.getAge() > olderThanAge)) {
-        ProcessMemInfo memInfo = processSMAPTree.get(p.getPid());
-        if (memInfo != null) {
-          total += memInfo.getPss();
+        ProcessMemInfo procMemInfo = processSMAPTree.get(p.getPid());
+        if (procMemInfo != null) {
+          for (ModuleMemInfo info : procMemInfo.getModuleMemList()) {
+            total += Math.min(info.sharedDirty, info.pss) + info.privateDirty
+                + info.privateClean;
+          }
+          System.out.println("Proc : " + procMemInfo + " : total : " + total);
           if (LOG.isDebugEnabled()) {
-            LOG.info("  PSS of PID : " + p.getPid() + " : " + memInfo.getPss()
-                + " KB : Total : " + total + " KB");
+            LOG.info(" PID : " + procMemInfo.toString());
           }
         }
       }
@@ -344,7 +368,7 @@ public class SmapsBasedProcessTree extends ResourceCalculatorProcessTree {
   /**
    * Get the CPU time in millisecond used by all the processes in the
    * process-tree since the process-tree created
-   *
+   * 
    * @return cumulative CPU time in millisecond since the process-tree created
    *         return 0 if it cannot be calculated
    */
@@ -364,9 +388,11 @@ public class SmapsBasedProcessTree extends ResourceCalculatorProcessTree {
   }
 
   private static String getValidPID(String pid) {
-    if (pid == null) return deadPid;
+    if (pid == null)
+      return deadPid;
     Matcher m = numberPattern.matcher(pid);
-    if (m.matches()) return pid;
+    if (m.matches())
+      return pid;
     return deadPid;
   }
 
@@ -379,7 +405,8 @@ public class SmapsBasedProcessTree extends ResourceCalculatorProcessTree {
 
     for (String dir : processDirs) {
       Matcher m = numberPattern.matcher(dir);
-      if (!m.matches()) continue;
+      if (!m.matches())
+        continue;
       try {
         if ((new File(procfsDir, dir)).isDirectory()) {
           processList.add(dir);
@@ -395,15 +422,17 @@ public class SmapsBasedProcessTree extends ResourceCalculatorProcessTree {
    * Construct the ProcessInfo using the process' PID and procfs rooted at the
    * specified directory and return the same. It is provided mainly to assist
    * testing purposes.
-   *
+   * 
    * Returns null on failing to read from procfs,
-   *
-   * @param pinfo ProcessInfo that needs to be updated
-   * @param procfsDir root of the proc file system
+   * 
+   * @param pinfo
+   *          ProcessInfo that needs to be updated
+   * @param procfsDir
+   *          root of the proc file system
    * @return updated ProcessInfo, null on errors.
    */
   private static ProcessInfo constructProcessInfo(ProcessInfo pinfo,
-                                                    String procfsDir) {
+      String procfsDir) {
     ProcessInfo ret = null;
     // Read "procfsDir/<pid>/stat" file - typically /proc/<pid>/stat
     BufferedReader in = null;
@@ -425,9 +454,9 @@ public class SmapsBasedProcessTree extends ResourceCalculatorProcessTree {
       if (mat) {
         // Set (name) (ppid) (pgrpId) (session) (utime) (stime) (vsize) (rss)
         pinfo.updateProcessInfo(m.group(2), m.group(3),
-                Integer.parseInt(m.group(4)), Integer.parseInt(m.group(5)),
-                Long.parseLong(m.group(7)), new BigInteger(m.group(8)),
-                Long.parseLong(m.group(10)), Long.parseLong(m.group(11)));
+            Integer.parseInt(m.group(4)), Integer.parseInt(m.group(5)),
+            Long.parseLong(m.group(7)), new BigInteger(m.group(8)),
+            Long.parseLong(m.group(10)), Long.parseLong(m.group(11)));
       } else {
         LOG.warn("Unexpected: procfs stat file is not in the expected format"
             + " for process with pid " + pinfo.getPid());
@@ -452,6 +481,7 @@ public class SmapsBasedProcessTree extends ResourceCalculatorProcessTree {
 
     return ret;
   }
+
   /**
    * Returns a string printing PIDs of process present in the
    * ProcfsBasedProcessTree. Output format : [pid pid ..]
@@ -465,7 +495,7 @@ public class SmapsBasedProcessTree extends ResourceCalculatorProcessTree {
     }
     return pTree.substring(0, pTree.length()) + "]";
   }
-  
+
   /**
    * Update memory related information
    * 
@@ -486,25 +516,25 @@ public class SmapsBasedProcessTree extends ResourceCalculatorProcessTree {
         LOG.info("Reading file " + file.getAbsolutePath() + ", File exists : "
             + file.exists());
       }
-      List<String> contents = IOUtils.readLines(new FileInputStream(file));
-      Map<String, Integer> map = new HashMap<String, Integer>();
-      for (String line : contents) {
-        line = line.trim();
-        if (line.matches("^[A-Z].*")) {
-          String[] tokens = line.split(":");
-          String key = tokens[0];
-          int value = Integer.parseInt(tokens[1].replace(KB, "").trim());
-          if (!map.containsKey(key)) {
-            map.put(key, 0);
-          }
-          map.put(key, (map.get(key) + value));
+      ModuleMemInfo moduleMemInfo = null;
+      while (in.ready()) {
+        String line = in.readLine().trim();
+        try {
+        Matcher address = ADDRESS_PATTERN.matcher(line);
+        if (address.find()) {
+          moduleMemInfo = new ModuleMemInfo(line);
+          pInfo.getModuleMemList().add(moduleMemInfo);
+          continue;
         }
-      }
-      if (LOG.isDebugEnabled()) {
-        LOG.info("smap : " + map);
-      }
-      if (map.size() > 0) {
-        pInfo.updateProcessMemInfo(map);
+        Matcher memInfo = MEM_INFO_PATTERN.matcher(line);
+        if (memInfo.find()) {
+          String key = memInfo.group(1).trim();
+          String value = memInfo.group(2).replace(KB, "").trim();
+          moduleMemInfo.updateModuleMemInfo(key, value);
+        }
+        } catch(Throwable t) {
+          t.printStackTrace();
+        }
       }
     } catch (FileNotFoundException f) {
       f.printStackTrace();
@@ -516,6 +546,37 @@ public class SmapsBasedProcessTree extends ResourceCalculatorProcessTree {
       LOG.error(t.getMessage());
     } finally {
       IOUtils.closeQuietly(in);
+    }
+  }
+
+  /**
+   * Placeholder for process's SMAPS information
+   */
+  static class ProcessMemInfo {
+    private String pid;
+    private List<ModuleMemInfo> moduleMemList;
+
+    public ProcessMemInfo(String pid) {
+      this.pid = pid;
+      this.moduleMemList = new LinkedList<ModuleMemInfo>();
+    }
+
+    public List<ModuleMemInfo> getModuleMemList() {
+      return moduleMemList;
+    }
+
+    public String getPid() {
+      return pid;
+    }
+
+    public String toString() {
+      StringBuilder sb = new StringBuilder();
+      sb.append("pid : " + pid);
+      for (ModuleMemInfo info : moduleMemList) {
+        sb.append("\n");
+        sb.append(info.toString());
+      }
+      return sb.toString();
     }
   }
 
@@ -541,7 +602,8 @@ public class SmapsBasedProcessTree extends ResourceCalculatorProcessTree {
    * 
    * </pre>
    */
-  static class ProcessMemInfo {
+  static class ModuleMemInfo {
+    private int size;
     private int rss;
     private int pss;
     private int sharedClean;
@@ -549,14 +611,18 @@ public class SmapsBasedProcessTree extends ResourceCalculatorProcessTree {
     private int privateClean;
     private int privateDirty;
     private int referenced;
-    private String pid;
+    private String address;
 
-    public ProcessMemInfo(String pid) {
-      this.pid = pid;
+    public ModuleMemInfo(String address) {
+      this.address = address;
     }
 
-    public String getPid() {
-      return pid;
+    public String getAddress() {
+      return address;
+    }
+
+    public int getSize() {
+      return size;
     }
 
     public int getRss() {
@@ -587,32 +653,85 @@ public class SmapsBasedProcessTree extends ResourceCalculatorProcessTree {
       return referenced;
     }
 
-    public void updateProcessMemInfo(Map<String, Integer> valueMap) {
-      this.rss = valueMap.get(RSS);
-      this.pss = valueMap.get(PSS);
-      this.sharedClean = valueMap.get(SHARED_CLEAN);
-      this.sharedDirty = valueMap.get(SHARED_DIRTY);
-      this.privateClean = valueMap.get(PRIVATE_CLEAN);
-      this.privateDirty = valueMap.get(PRIVATE_DIRTY);
-      this.referenced = valueMap.get(REFERENCED);
+    public void updateModuleMemInfo(String key, String value) {
+      MEM_INFO info = MEM_INFO.getMemInfoByName(key);
+      int val = 0;
+      try {
+        val = Integer.parseInt(value.trim());
+      } catch (NumberFormatException ne) {
+        LOG.error("Error in parsing : " + info + " : value" + value.trim());
+      }
+      if (info == null) {
+        return;
+      }
+      switch (info) {
+      case SIZE:
+        size = val;
+        break;
+      case RSS:
+        rss = val;
+        break;
+      case PSS:
+        pss = val;
+        break;
+      case SHARED_CLEAN:
+        sharedClean = val;
+        break;
+      case SHARED_DIRTY:
+        sharedDirty = val;
+        break;
+      case PRIVATE_CLEAN:
+        privateClean = val;
+        break;
+      case PRIVATE_DIRTY:
+        privateDirty = val;
+        break;
+      case REFERENCED:
+        referenced = val;
+        break;
+      default:
+        break;
+      }
     }
 
     public String toString() {
       StringBuilder sb = new StringBuilder();
-      sb.append("pid :" + this.getPid()).append(", ");
-      sb.append(RSS + " :" + this.getRss()).append(", ");
-      sb.append(SHARED_CLEAN + " :" + this.getSharedClean()).append(", ");
-      sb.append(SHARED_DIRTY + " :" + this.getSharedDirty()).append(", ");
-      sb.append(PRIVATE_CLEAN + " :" + this.getPrivateClean()).append(", ");
-      sb.append(PRIVATE_DIRTY + " :" + this.getPrivateDirty());
+      sb.append("\t").append(this.getAddress()).append("\n");
+      sb.append("\t").append(MEM_INFO.SIZE + ":" + this.getSize())
+          .append(" kB\n");
+      sb.append("\t").append(MEM_INFO.PSS + ":" + this.getPss())
+          .append(" kB\n");
+      sb.append("\t").append(MEM_INFO.RSS + ":" + this.getRss())
+          .append(" kB\n");
+      sb.append("\t")
+          .append(MEM_INFO.SHARED_CLEAN + ":" + this.getSharedClean())
+          .append(" kB\n");
+      sb.append("\t")
+          .append(MEM_INFO.SHARED_DIRTY + ":" + this.getSharedDirty())
+          .append(" kB\n");
+      sb.append("\t")
+          .append(MEM_INFO.PRIVATE_CLEAN + ":" + this.getPrivateClean())
+          .append(" kB\n");
+      sb.append("\t")
+          .append(MEM_INFO.PRIVATE_DIRTY + ":" + this.getPrivateDirty())
+          .append(" kB\n");
+      sb.append("\t").append(MEM_INFO.REFERENCED + ":" + this.getReferenced())
+          .append(" kB\n");
+      sb.append("\t")
+          .append(MEM_INFO.PRIVATE_DIRTY + ":" + this.getPrivateDirty())
+          .append(" kB\n");
+      sb.append("\t")
+          .append(MEM_INFO.PRIVATE_DIRTY + ":" + this.getPrivateDirty())
+          .append(" kB\n");
+
       return sb.toString();
     }
   }
 
   /**
-   *
+   * 
    * Class containing information of a process.
-   *
+   * 
    */
   private static class ProcessInfo {
     private String pid; // process-id
@@ -624,7 +743,8 @@ public class SmapsBasedProcessTree extends ResourceCalculatorProcessTree {
     private Long rssmemPage; // rss memory usage in # of pages
     private Long utime = 0L; // # of jiffies in user mode
     private final BigInteger MAX_LONG = BigInteger.valueOf(Long.MAX_VALUE);
-    private BigInteger stime = new BigInteger("0"); // # of jiffies in kernel mode
+    private BigInteger stime = new BigInteger("0"); // # of jiffies in kernel
+                                                    // mode
     // how many times has this process been seen alive
     private int age;
 
@@ -634,7 +754,9 @@ public class SmapsBasedProcessTree extends ResourceCalculatorProcessTree {
     // We need this to compute the cumulative CPU time
     // because the subprocess may finish earlier than root process
 
-    private List<ProcessInfo> children = new ArrayList<ProcessInfo>(); // list of children
+    private List<ProcessInfo> children = new ArrayList<ProcessInfo>(); // list
+                                                                       // of
+                                                                       // children
 
     public ProcessInfo(String pid) {
       this.pid = pid;
@@ -710,8 +832,8 @@ public class SmapsBasedProcessTree extends ResourceCalculatorProcessTree {
         }
         return;
       }
-      this.dtime = (this.utime - oldInfo.utime +
-          this.stime.subtract(oldInfo.stime).longValue());
+      this.dtime = (this.utime - oldInfo.utime + this.stime.subtract(
+          oldInfo.stime).longValue());
     }
 
     public void updateAge(ProcessInfo oldInfo) {
@@ -734,9 +856,8 @@ public class SmapsBasedProcessTree extends ResourceCalculatorProcessTree {
       BufferedReader in = null;
       FileReader fReader = null;
       try {
-        fReader =
-            new FileReader(new File(new File(procfsDir, pid.toString()),
-                PROCFS_CMDLINE_FILE));
+        fReader = new FileReader(new File(new File(procfsDir, pid.toString()),
+            PROCFS_CMDLINE_FILE));
       } catch (FileNotFoundException f) {
         // The process vanished in the interim!
         return ret;
