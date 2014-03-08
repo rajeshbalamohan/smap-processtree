@@ -354,7 +354,6 @@ public class SmapsBasedProcessTree extends ResourceCalculatorProcessTree {
             total += Math.min(info.sharedDirty, info.pss) + info.privateDirty
                 + info.privateClean;
           }
-          System.out.println("Proc : " + procMemInfo + " : total : " + total);
           if (LOG.isDebugEnabled()) {
             LOG.info(" PID : " + procMemInfo.toString());
           }
