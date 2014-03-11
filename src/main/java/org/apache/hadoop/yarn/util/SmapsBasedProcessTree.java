@@ -20,6 +20,7 @@ package org.apache.hadoop.yarn.util;
 
 import java.io.BufferedReader;
 import java.io.File;
+import java.io.FileInputStream;
 import java.io.FileNotFoundException;
 import java.io.FileReader;
 import java.io.IOException;
@@ -361,6 +362,9 @@ public class SmapsBasedProcessTree extends ResourceCalculatorProcessTree {
       }
     }
     total = (total * 1024); // convert to bytes
+    if (LOG.isDebugEnabled()) {
+      LOG.info(" total : " + total);
+    }
     return total; // size
   }
 
@@ -511,13 +515,13 @@ public class SmapsBasedProcessTree extends ResourceCalculatorProcessTree {
       File file = new File(pidDir, SMAPS);
       fReader = new FileReader(file);
       in = new BufferedReader(fReader);
-      if (LOG.isDebugEnabled()) {
-        LOG.info("Reading file " + file.getAbsolutePath() + ", File exists : "
-            + file.exists());
-      }
       ModuleMemInfo moduleMemInfo = null;
-      while (in.ready()) {
-        String line = in.readLine().trim();
+      List<String> lines = IOUtils.readLines(new FileInputStream(file));
+      if (LOG.isDebugEnabled()) {
+        LOG.debug("Read file : " + file.getName() + " : lines : " + lines.size());
+      }
+      for(String line : lines) {
+        line = line.trim();
         try {
         Matcher address = ADDRESS_PATTERN.matcher(line);
         if (address.find()) {
@@ -529,6 +533,9 @@ public class SmapsBasedProcessTree extends ResourceCalculatorProcessTree {
         if (memInfo.find()) {
           String key = memInfo.group(1).trim();
           String value = memInfo.group(2).replace(KB, "").trim();
+          if (LOG.isDebugEnabled()) {
+            LOG.debug("MemInfo : " +key + " : Value  : "  +value);
+          }
           moduleMemInfo.updateModuleMemInfo(key, value);
         }
         } catch(Throwable t) {
@@ -654,6 +661,9 @@ public class SmapsBasedProcessTree extends ResourceCalculatorProcessTree {
 
     public void updateModuleMemInfo(String key, String value) {
       MEM_INFO info = MEM_INFO.getMemInfoByName(key);
+      if (LOG.isDebugEnabled()) {
+        LOG.debug("updateModuleMemInfo : memInfo : " + info);
+      }
       int val = 0;
       try {
         val = Integer.parseInt(value.trim());
