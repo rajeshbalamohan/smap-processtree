@@ -49,10 +49,9 @@ import org.junit.Assert;
 import org.junit.Before;
 import org.junit.Test;
 
-
-
 /**
- * A JUnit test to test ProcfsBasedProcessTree.
+ * Similar to ProcfsBasedProcessTree test case.
+ * Provides add-on checks for RSS memory.
  */
 public class TestSmapsBasedProcessTree {
 
@@ -64,8 +63,10 @@ public class TestSmapsBasedProcessTree {
   private ShellCommandExecutor shexec = null;
   private String pidFile, lowestDescendant;
   private String shellScript;
-
+  private String LINE_SEPARATOR = System.getProperty("line.separator");
   private static final int N = 6; // Controls the RogueTask
+  
+  private MemoryMappingInfo[] memInfo = new MemoryMappingInfo[4];
 
   private class RogueTaskThread extends Thread {
     public void run() {
@@ -301,17 +302,17 @@ public class TestSmapsBasedProcessTree {
   
   class ProcessMemInfo {
     private String pid;
-    private List<ModuleMemInfo> moduleMemList;
+    private List<MemoryMappingInfo> moduleMemList;
 
-    public ProcessMemInfo(String pid, ModuleMemInfo[] memInfo) {
+    public ProcessMemInfo(String pid, MemoryMappingInfo[] memInfo) {
       this.pid = pid;
-      this.moduleMemList = new LinkedList<ModuleMemInfo>();
-      for(ModuleMemInfo info : memInfo) {
+      this.moduleMemList = new LinkedList<MemoryMappingInfo>();
+      for(MemoryMappingInfo info : memInfo) {
         moduleMemList.add(info);
       }
     }
 
-    public List<ModuleMemInfo> getModuleMemList() {
+    public List<MemoryMappingInfo> getModuleMemList() {
       return moduleMemList;
     }
 
@@ -321,8 +322,8 @@ public class TestSmapsBasedProcessTree {
 
     public String toString() {
       StringBuilder sb = new StringBuilder();
-      for (ModuleMemInfo info : moduleMemList) {
-        sb.append("\n");
+      for (MemoryMappingInfo info : moduleMemList) {
+        sb.append(LINE_SEPARATOR);
         sb.append(info.toString());
       }
       return sb.toString();
@@ -330,7 +331,7 @@ public class TestSmapsBasedProcessTree {
   }
 
   
-  class ModuleMemInfo {
+  class MemoryMappingInfo {
     String address;
     String size;
     String rss;
@@ -346,7 +347,7 @@ public class TestSmapsBasedProcessTree {
     String kernelPageSize;
     String mmuPageSize;
     
-    public ModuleMemInfo(String address, String[] entries) {
+    public MemoryMappingInfo(String address, String[] entries) {
       this.address = address;
       size = entries[0];
       rss = entries[1];
@@ -365,20 +366,20 @@ public class TestSmapsBasedProcessTree {
     
     public String toString() {
       StringBuilder sb = new StringBuilder();
-      sb.append(address+"\n");
-      sb.append("Size:                      ").append(size).append(" kB\r\n");
-      sb.append("Rss:                       ").append(rss).append(" kB\r\n");
-      sb.append("Pss:                       ").append(pss).append(" kB\r\n");
-      sb.append("Shared_Clean:              ").append(shared_clean).append(" kB\r\n");
-      sb.append("Shared_Dirty:              ").append(shared_dirty).append(" kB\r\n");
-      sb.append("Private_Clean:             ").append(private_clean).append(" kB\r\n");
-      sb.append("Private_Dirty:             ").append(private_dirty).append(" kB\r\n");
-      sb.append("Referenced:                ").append(referenced).append(" kB\r\n");
-      sb.append("Anonymous:                 ").append(anonymous).append(" kB\r\n");
-      sb.append("AnonHugePages:             ").append(anonHugePages).append(" kB\r\n");
-      sb.append("Swap:                      ").append(swap).append(" kB\r\n");
-      sb.append("KernelPageSize:            ").append(kernelPageSize).append(" kB\r\n");
-      sb.append("MMUPageSize:               ").append(mmuPageSize).append(" kB\r\n");
+      sb.append(address).append(LINE_SEPARATOR);
+      sb.append("Size:                      ").append(size).append(" kB\n");
+      sb.append("Rss:                       ").append(rss).append(" kB\n");
+      sb.append("Pss:                       ").append(pss).append(" kB\n");
+      sb.append("Shared_Clean:              ").append(shared_clean).append(" kB\n");
+      sb.append("Shared_Dirty:              ").append(shared_dirty).append(" kB\n");
+      sb.append("Private_Clean:             ").append(private_clean).append(" kB\n");
+      sb.append("Private_Dirty:             ").append(private_dirty).append(" kB\n");
+      sb.append("Referenced:                ").append(referenced).append(" kB\n");
+      sb.append("Anonymous:                 ").append(anonymous).append(" kB\n");
+      sb.append("AnonHugePages:             ").append(anonHugePages).append(" kB\n");
+      sb.append("Swap:                      ").append(swap).append(" kB\n");
+      sb.append("KernelPageSize:            ").append(kernelPageSize).append(" kB\n");
+      sb.append("MMUPageSize:               ").append(mmuPageSize).append(" kB\n");
       return sb.toString();
     }
     
@@ -458,14 +459,18 @@ public class TestSmapsBasedProcessTree {
       procInfos[3] = new ProcessStatInfo(new String[]
           {"400", "proc4", "1", "400", "400", "400000", "400", "4000", "800"});
       
-      ModuleMemInfo[] moduleMemInfos = new ModuleMemInfo[4];
-      moduleMemInfos[0] = new ModuleMemInfo("7fa51c02b000-7fa51c035000", new String[]
+      //Create 
+      MemoryMappingInfo[] moduleMemInfos = new MemoryMappingInfo[4];
+      moduleMemInfos[0] = new MemoryMappingInfo("7f56c177c000-7f56c177d000 "
+          + "rw-p 00010000 08:02 40371558                   "
+          + "/grid/0/jdk1.7.0_25/jre/lib/amd64/libnio.so", new String[]
           {"4", "4", "25", "4", "25", "15", "10", "4", "0", "0", "0", "4", "4"});
-      moduleMemInfos[1] = new ModuleMemInfo("7fa526c2a000-7fa526c4a000", new String[]
+      moduleMemInfos[1] = new MemoryMappingInfo("7fb09382e000-7fb09382f000 r--s 00003000 "
+          + "08:02 25953545", new String[]
           {"4", "4", "25", "4", "0", "15", "10", "4", "0", "0", "0", "4", "4"});
-      moduleMemInfos[2] = new ModuleMemInfo("ffffffffff600000-ffffffffff601000", new String[]
+      moduleMemInfos[2] = new MemoryMappingInfo("7e8790000-7e8b80000 r-xs 00000000 00:00 0", new String[]
           {"4", "4", "25", "4", "0", "15", "10", "4", "0", "0", "0", "4", "4"});
-      moduleMemInfos[3] = new ModuleMemInfo("7ffffb4a5000-7ffffb4bb000", new String[]
+      moduleMemInfos[3] = new MemoryMappingInfo("7da677000-7e0dcf000 rw-p 00000000 00:00 0", new String[]
           {"4", "4", "25", "4", "50", "15", "10", "4", "0", "0", "0", "4", "4"});
       
       ProcessMemInfo[] memInfo = new ProcessMemInfo[4];
@@ -487,9 +492,9 @@ public class TestSmapsBasedProcessTree {
       Assert.assertEquals("Cumulative virtual memory does not match", 600000L,
                    processTree.getCumulativeVmem());
 
-      // verify rss memory
+      // RSS=Min(shared_dirty,PSS)+PrivateClean+PrivateDirty (exclude r-xs, r--s)
       Assert.assertEquals("Cumulative rss memory does not match",
-                   150*1024*3, processTree.getCumulativeRssmem());
+                   (100*1024*3), processTree.getCumulativeRssmem());
 
       // verify cumulative cpu time
       long cumuCpuTime = ProcfsBasedProcessTree.JIFFY_LENGTH_IN_MILLIS > 0 ?
@@ -551,15 +556,19 @@ public class TestSmapsBasedProcessTree {
       procInfos[3] = new ProcessStatInfo(new String[]
                         {"400", "proc4", "100", "100", "100", "400000", "400"});
 
-      
-      ModuleMemInfo[] moduleMemInfos = new ModuleMemInfo[4];
-      moduleMemInfos[0] = new ModuleMemInfo("7fa51c02b000-7fa51c035000", new String[]
+      //Create memory mapping info.  2 of them has r--s, r-xs permission
+      //which needs to be ignored during RSS calculation
+      MemoryMappingInfo[] moduleMemInfos = new MemoryMappingInfo[4];
+      moduleMemInfos[0] = new MemoryMappingInfo("7f56c177c000-7f56c177d000 "
+          + "rw-p 00010000 08:02 40371558                   "
+          + "/grid/0/jdk1.7.0_25/jre/lib/amd64/libnio.so", new String[]
           {"4", "4", "25", "4", "25", "15", "10", "4", "0", "0", "0", "4", "4"});
-      moduleMemInfos[1] = new ModuleMemInfo("7fa526c2a000-7fa526c4a000", new String[]
+      moduleMemInfos[1] = new MemoryMappingInfo("7fb09382e000-7fb09382f000 r--s 00003000 "
+          + "08:02 25953545", new String[]
           {"4", "4", "25", "4", "0", "15", "10", "4", "0", "0", "0", "4", "4"});
-      moduleMemInfos[2] = new ModuleMemInfo("ffffffffff600000-ffffffffff601000", new String[]
+      moduleMemInfos[2] = new MemoryMappingInfo("7e8790000-7e8b80000 r-xs 00000000 00:00 0", new String[]
           {"4", "4", "25", "4", "0", "15", "10", "4", "0", "0", "0", "4", "4"});
-      moduleMemInfos[3] = new ModuleMemInfo("7ffffb4a5000-7ffffb4bb000", new String[]
+      moduleMemInfos[3] = new MemoryMappingInfo("7da677000-7e0dcf000 rw-p 00000000 00:00 0", new String[]
           {"4", "4", "25", "4", "50", "15", "10", "4", "0", "0", "0", "4", "4"});
       
       ProcessMemInfo[] memInfo = new ProcessMemInfo[4];
@@ -577,13 +586,13 @@ public class TestSmapsBasedProcessTree {
       // build the process tree.
       processTree.updateProcessTree();
       
-      //min(shared_dirty, pss) + private_dirty + private_clean
       // verify cumulative memory
       Assert.assertEquals("Vmem cumulative memory does not match",
                    700000L, processTree.getCumulativeVmem());
       //Verify RSS memory
+      //min(shared_dirty, pss) + private_dirty + private_clean
       Assert.assertEquals("RSS cumulative memory does not match",
-          150*1024*3, processTree.getCumulativeRssmem());
+          100*1024*3, processTree.getCumulativeRssmem());
       
 
       // write one more process as child of 100.
@@ -606,13 +615,13 @@ public class TestSmapsBasedProcessTree {
       Assert.assertEquals("Cumulative vmem does not include new process",
                    1200000L, processTree.getCumulativeVmem());
       Assert.assertEquals("Cumulative rssmem does not include new process",
-                   150*1024*4, processTree.getCumulativeRssmem());
+                   100*1024*4, processTree.getCumulativeRssmem());
       
             // however processes older than 1 iteration will retain the older value
       Assert.assertEquals("Cumulative vmem shouldn't have included new process",
                    700000L, processTree.getCumulativeVmem(1));
       Assert.assertEquals("Cumulative rssmem shouldn't have included new process",
-                150*1024*3, processTree.getCumulativeRssmem(1));
+                100*1024*3, processTree.getCumulativeRssmem(1));
 
       // one more process
       newPids = new String[]{ "600" };
@@ -632,14 +641,14 @@ public class TestSmapsBasedProcessTree {
       Assert.assertEquals("Cumulative vmem shouldn't have included new processes",
                    700000L, processTree.getCumulativeVmem(2));
       Assert.assertEquals("Cumulative rssmem shouldn't have included new processes",
-                150*1024*3, processTree.getCumulativeRssmem(2));
+                100*1024*3, processTree.getCumulativeRssmem(2));
 
       // processes older than 1 iteration should not include new process,
       // but include process 500
       Assert.assertEquals("Cumulative vmem shouldn't have included new processes",
                    1200000L, processTree.getCumulativeVmem(1));
       Assert.assertEquals("Cumulative rssmem shouldn't have included new processes",
-          150*1024*4, processTree.getCumulativeRssmem(1));
+          100*1024*4, processTree.getCumulativeRssmem(1));
 
       // no processes older than 3 iterations, this should be 0
       Assert.assertEquals("Getting non-zero vmem for processes older than 3 iterations",
@@ -713,14 +722,19 @@ public class TestSmapsBasedProcessTree {
           "600", "proc6", "1", "1", "1", "400000", "400", "4000", "800"});
       
 
-      ModuleMemInfo[] moduleMemInfos = new ModuleMemInfo[4];
-      moduleMemInfos[0] = new ModuleMemInfo("7fa51c02b000-7fa51c035000", new String[]
+      //Create memory mapping info.  One of them has r--s permission
+      //which needs to be ignored during RSS calculation
+      MemoryMappingInfo[] moduleMemInfos = new MemoryMappingInfo[4];
+      moduleMemInfos[0] = new MemoryMappingInfo("7f56c177c000-7f56c177d000 "
+          + "rw-p 00010000 08:02 40371558                   "
+          + "/grid/0/jdk1.7.0_25/jre/lib/amd64/libnio.so", new String[]
           {"4", "4", "25", "4", "25", "15", "10", "4", "0", "0", "0", "4", "4"});
-      moduleMemInfos[1] = new ModuleMemInfo("7fa526c2a000-7fa526c4a000", new String[]
+      moduleMemInfos[1] = new MemoryMappingInfo("7fb09382e000-7fb09382f000 r--s 00003000 "
+          + "08:02 25953545", new String[]
           {"4", "4", "25", "4", "0", "15", "10", "4", "0", "0", "0", "4", "4"});
-      moduleMemInfos[2] = new ModuleMemInfo("ffffffffff600000-ffffffffff601000", new String[]
+      moduleMemInfos[2] = new MemoryMappingInfo("7e8790000-7e8b80000 r-xs 00000000 00:00 0", new String[]
           {"4", "4", "25", "4", "0", "15", "10", "4", "0", "0", "0", "4", "4"});
-      moduleMemInfos[3] = new ModuleMemInfo("7ffffb4a5000-7ffffb4bb000", new String[]
+      moduleMemInfos[3] = new MemoryMappingInfo("7da677000-7e0dcf000 rw-p 00000000 00:00 0", new String[]
           {"4", "4", "25", "4", "50", "15", "10", "4", "0", "0", "0", "4", "4"});
       
       ProcessMemInfo[] memInfo = new ProcessMemInfo[6];
